@@ -289,6 +289,7 @@ def main():
     # open logfile
     logFile = open('logfile.txt', 'w')
     
+    # init wii connections based on command line parameter
     wiimoteCount = len(sys.argv)-1
     print 'Put', wiimoteCount, ' Wiimote(s) in discoverable mode now (press 1+2)...'
     for wiiIndex in range(0,wiimoteCount):
@@ -296,25 +297,31 @@ def main():
         wiimotes.append(current)
         current.start()
     
+    # init position manager
     positionManager = position3d(wiimotes)
 
-    
     lastLogTime = time.time()
     while (LoggingIsActive):
         time.sleep(0.5)
         
+        # get position and delta time
         currentPosition = positionManager.getPosition()
         logTime = time.time()
         
+        # print time to logfile and STDOUT
         print logTime-lastLogTime,
         logFile.write(str(logTime-lastLogTime))
          
-        lastLogTime = logTime
+        # print position to logfile and STDOUT
         for c in currentPosition:
             print ",", c,
             logFile.write("," + str(c))
         print
+        
         logFile.write("\n")    
+        
+        lastLogTime = logTime
+        
         
     print "shutting down system"
     for wiiCon in wiimotes:
