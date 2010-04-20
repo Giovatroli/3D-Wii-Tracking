@@ -1,6 +1,9 @@
-# Copyright 2010 by Bastian Migge, inspire AG
-
 #!/usr/bin/python
+'''
+     Copyright 2010 by Bastian Migge, inspire AG
+    writes data to ./logfile.txt
+'''
+
 import cwiid
 import sys
 import time
@@ -23,6 +26,64 @@ wiimotes = []
 shutdownLogger = False
 LoggingIsActive = True
 
+class position3d():
+    def __init__(self, wiimotes):
+        self.wiimotes = wiimotes
+        
+    def getPosition(self):
+        measurements = []
+        for wiiCon in self.wiimotes:
+            measurements.append(wiiCon.averageIRPosition)
+        position = self._calculate3DPosition(measurements)
+        return position 
+    
+    def _calculate3DPosition(self,measurements):
+
+        if len(measurements) < 2:
+            sys.stderr.write("ERR: measurement data insufficient!")
+            return
+        
+        #point = {'x':0,'y':0,'z':0}
+        #position = {'x':0,'y':0,'z':0}
+        point, position = zeros(3), zeros(3)
+        
+    
+        # 3D kamera position phia. angle between default and actual direction of the IR camera (rot around y axis)
+        #cameraPosition = [{'x':715,'y':297,'z':4000},{'x':2800,'y':297,'z':0}]
+        cameraPosition = [[715.0,297.,4000.],[2800.,297.,0.]]
+        
+        winkelwii1=math.radians(0)
+        winkelwii2=math.radians(110)
+        phi=([winkelwii1,winkelwii2])
+        
+        # zwei weit entfernte (ca 10 m) punkte auf der geraden durch die messung und die camera:
+        #bildebene = [{'x':None,'y':None,'z':None},{'x':None,'y':None,'z':None}]
+        bildebene = [empty(3),empty(3)]
+        
+        #helper
+        #schnittpunkte
+        #pa  = {'x':None,'y':None,'z':None}
+        #pb = {'x':None,'y':None,'z':None}
+        pa,pb = empty(3),empty(3) 
+        
+        # Streckfaktor zur Evaluation  des 2. Punkts fuer die Geradengleichung
+        streckung= 5.0
+        mua = 0.0
+        mub = 0.0
+        
+        # cam 0 (in Grundposition)
+        vt1=transformation(phi[0],measurements[0])
+        bildebene[0] = cameraPosition[0] + streckung * vt1
+        
+        # cam 1 (seite)
+        vt2=transformation(phi[1],measurements[1])
+        bildebene[1] = cameraPosition[1] + streckung * vt2
+        
+        LineLineIntersect(cameraPosition[0],bildebene[0],cameraPosition[1], bildebene[1],pa,pb,mua, mub)
+    
+        position = pa+0.5*(pb-pa)
+        return list(position)
+    
     
 # connection thread to wiimote
 class wiimoteConnection(Thread):
@@ -132,9 +193,9 @@ class wiimoteConnection(Thread):
 
 def LineLineIntersect(p1,p2,p3,p4,pa,pb,mua,mub):
     EPS = 0.000001
-    p13 = {'x':0.0,'y':0.0,'z':0.0}
-    p43 = {'x':0.0,'y':0.0,'z':0.0}
-    p21 = {'x':0.0,'y':0.0,'z':0.0}
+    p13 = {0:0.0,1:0.0,2:0.0}
+    p43 = {0:0.0,1:0.0,2:0.0}
+    p21 = {0:0.0,1:0.0,2:0.0}
 
     d1343 = 0.0
     d4321 = 0.0
@@ -145,25 +206,25 @@ def LineLineIntersect(p1,p2,p3,p4,pa,pb,mua,mub):
     numer = 0.0
     denom = 0.0
 
-    p13['x'] = p1['x'] - p3['x']
-    p13['y'] = p1['y'] - p3['y']
-    p13['z'] = p1['z'] - p3['z']
-    p43['x'] = p4['x'] - p3['x']
-    p43['y'] = p4['y'] - p3['y']
-    p43['z'] = p4['z'] - p3['z']
-    if (math.fabs(p43['x'])  < EPS and math.fabs(p43['y'])  < EPS and math.fabs(p43['z'])  < EPS):
+    p13[0] = p1[0] - p3[0]
+    p13[1] = p1[1] - p3[1]
+    p13[2] = p1[2] - p3[2]
+    p43[0] = p4[0] - p3[0]
+    p43[1] = p4[1] - p3[1]
+    p43[2] = p4[2] - p3[2]
+    if (math.fabs(p43[0])  < EPS and math.fabs(p43[1])  < EPS and math.fabs(p43[2])  < EPS):
         return False
-    p21['x'] = p2['x'] - p1['x']
-    p21['y'] = p2['y'] - p1['y']
-    p21['z'] = p2['z'] - p1['z']
-    if (math.fabs(p21['x'])  < EPS and math.fabs(p21['y'])  < EPS and math.fabs(p21['z'])  < EPS):
+    p21[0] = p2[0] - p1[0]
+    p21[1] = p2[1] - p1[1]
+    p21[2] = p2[2] - p1[2]
+    if (math.fabs(p21[0])  < EPS and math.fabs(p21[1])  < EPS and math.fabs(p21[2])  < EPS):
         return False
 
-    d1343 = p13['x'] * p43['x'] + p13['y'] * p43['y'] + p13['z'] * p43['z']
-    d4321 = p43['x'] * p21['x'] + p43['y'] * p21['y'] + p43['z'] * p21['z']
-    d1321 = p13['x'] * p21['x'] + p13['y'] * p21['y'] + p13['z'] * p21['z']
-    d4343 = p43['x'] * p43['x'] + p43['y'] * p43['y'] + p43['z'] * p43['z']
-    d2121 = p21['x'] * p21['x'] + p21['y'] * p21['y'] + p21['z'] * p21['z']
+    d1343 = p13[0] * p43[0] + p13[1] * p43[1] + p13[2] * p43[2]
+    d4321 = p43[0] * p21[0] + p43[1] * p21[1] + p43[2] * p21[2]
+    d1321 = p13[0] * p21[0] + p13[1] * p21[1] + p13[2] * p21[2]
+    d4343 = p43[0] * p43[0] + p43[1] * p43[1] + p43[2] * p43[2]
+    d2121 = p21[0] * p21[0] + p21[1] * p21[1] + p21[2] * p21[2]
 
     denom = d2121 * d4343 - d4321 * d4321
     if (math.fabs(denom) < EPS):
@@ -173,19 +234,21 @@ def LineLineIntersect(p1,p2,p3,p4,pa,pb,mua,mub):
     mua = numer / denom;
     mub = (d1343 + d4321 * (mua)) / d4343
 
-    pa['x'] = p1['x'] + mua * p21['x']
-    pa['y'] = p1['y'] + mua * p21['y']
-    pa['z'] = p1['z'] + mua * p21['z']
-    pb['x'] = p3['x'] + mub * p43['x']
-    pb['y'] = p3['y'] + mub * p43['y']
-    pb['z'] = p3['z'] + mub * p43['z']
+    pa[0] = p1[0] + mua * p21[0]
+    pa[1] = p1[1] + mua * p21[1]
+    pa[2] = p1[2] + mua * p21[2]
+    pb[0] = p3[0] + mub * p43[0]
+    pb[1] = p3[1] + mub * p43[1]
+    pb[2] = p3[2] + mub * p43[2]
 
     return True
 
 
 def transformation(phi,measurement):
-    #rechnet den Richtungsvektor der beiden geraden  in globalen koordinaten aus
-    #Umrechnungsfaktor pixel->mm in Bildebene L0 (aus Experiment)
+    '''
+    rechnet den Richtungsvektor der beiden geraden  in globalen koordinaten aus
+    Umrechnungsfaktor pixel->mm in Bildebene L0 (aus Experiment)
+    '''
     f = 0.821659482758621
     
     # Stuetzvektor zum Nullpunkt der Bildebene L= relativ zur kamera (in mm)
@@ -204,55 +267,7 @@ def transformation(phi,measurement):
     return vt 
 
     
-def get3DPosition(measurements):
 
-    if len(measurements) < 2:
-        sys.stderr.write("ERR: measurement data insufficient!")
-        return
-    
-    point = {'x':0,'y':0,'z':0}
-    position = {'x':0,'y':0,'z':0}
-
-    # 3D kamera position phia. angle between default and actual direction of the IR camera (rot around y axis)
-    cameraPosition = [{'x':715,'y':297,'z':4000},{'x':2800,'y':297,'z':0}]
-    winkelwii1=math.radians(0)
-    winkelwii2=math.radians(110)
-    phi=([winkelwii1,winkelwii2])
-    
-    # zwei weit entfernte (ca 10 m) punkte auf der geraden durch die messung und die camera:
-    bildebene = [{'x':None,'y':None,'z':None},{'x':None,'y':None,'z':None}]
-    #bildebene = [empty(3),empty(3)]
-    
-    #helper
-    #schnittpunkte
-    pa  = {'x':None,'y':None,'z':None}
-    pb = {'x':None,'y':None,'z':None}
-    # Streckfaktor zur Evaluation  des 2. Punkts fuer die Geradengleichung
-    streckung= 5.0
-    mua = 0.0
-    mub = 0.0
-    
-    
-    # cam 0 (in Grundposition)
-    vt1=transformation(phi[0],measurements[0])
-    #bildebene[0] = cameraPosition[0] + streckung * vt1
-    bildebene[0]['x'] = cameraPosition[0]['x'] + streckung * vt1[0]
-    bildebene[0]['y'] = cameraPosition[0]['y'] + streckung * vt1[1]
-    bildebene[0]['z'] = cameraPosition[0]['z'] + streckung * vt1[2]
-    
-    # cam 1 (seite)
-    vt2=transformation(phi[1],measurements[1])
-    bildebene[1]['x'] = cameraPosition[1]['x'] + streckung * vt2[0]
-    bildebene[1]['y'] = cameraPosition[1]['y'] + streckung * vt2[1]
-    bildebene[1]['z'] = cameraPosition[1]['z'] + streckung * vt2[2]
-    
-  
-    LineLineIntersect(cameraPosition[0],bildebene[0],cameraPosition[1], bildebene[1],pa,pb,mua, mub)
-
-    position['x'] = pa['x']+0.5*(pb['x']-pa['x'])
-    position['y'] = pa['y']+0.5*(pb['y']-pa['y'])
-    position['z'] = pa['z']+0.5*(pb['z']-pa['z'])
-    return position
 
 def signalHandler(signum, frame):
     global LoggingIsActive
@@ -273,7 +288,7 @@ def main():
 
     # open logfile
     logFile = open('logfile.txt', 'w')
-
+    
     wiimoteCount = len(sys.argv)-1
     print 'Put', wiimoteCount, ' Wiimote(s) in discoverable mode now (press 1+2)...'
     for wiiIndex in range(0,wiimoteCount):
@@ -281,21 +296,21 @@ def main():
         wiimotes.append(current)
         current.start()
     
+    positionManager = position3d(wiimotes)
+
+    
     lastLogTime = time.time()
     while (LoggingIsActive):
         time.sleep(0.5)
-        measurements = []
-        for wiiCon in wiimotes:
-            measurements.append(wiiCon.averageIRPosition)
-        #print measurements
-        position = get3DPosition(measurements)
+        
+        currentPosition = positionManager.getPosition()
         logTime = time.time()
         
         print logTime-lastLogTime,
         logFile.write(str(logTime-lastLogTime))
          
         lastLogTime = logTime
-        for c in position.values():
+        for c in currentPosition:
             print ",", c,
             logFile.write("," + str(c))
         print
