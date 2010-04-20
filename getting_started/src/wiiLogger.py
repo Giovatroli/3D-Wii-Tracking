@@ -1,7 +1,8 @@
 #!/usr/bin/python
 '''
-     Copyright 2010 by Bastian Migge, inspire AG
-    writes data to ./logfile.txt
+     Copyright 2010 by Claudio Giovanoli, ggiova@student.ethz.ch, ETH Zurich
+     This programm takes the x,y data of two Wiimotes IR cams t0 run a 3D tracking of 2 IR sources attached to each other, but pointing in perpendicular directions. T
+     The 3D data from two Wiimotes writes data to ./logfile.txt
 '''
 
 import cwiid
@@ -43,42 +44,39 @@ class position3d():
             sys.stderr.write("ERR: measurement data insufficient!")
             return
         
-        #point = {'x':0,'y':0,'z':0}
-        #position = {'x':0,'y':0,'z':0}
+
         point, position = zeros(3), zeros(3)
         
     
-        # 3D kamera position phia. angle between default and actual direction of the IR camera (rot around y axis)
-        #cameraPosition = [{'x':715,'y':297,'z':4000},{'x':2800,'y':297,'z':0}]
+        #3D camera positions / first points for the 2 line equations
         cameraPosition = [[715.0,297.,4000.],[2800.,297.,0.]]
+        #second points for the lines
+        bildebene = [empty(3),empty(3)]
+        # Scaling factor ot evaluate the second points
+        streckung= 5.0
         
+        #angle between default (pinting perpendicular on the surface) and actual pointing direction of the IR camera (rot around y axis)
         winkelwii1=math.radians(0)
         winkelwii2=math.radians(110)
         phi=([winkelwii1,winkelwii2])
         
-        # zwei weit entfernte (ca 10 m) punkte auf der geraden durch die messung und die camera:
-        #bildebene = [{'x':None,'y':None,'z':None},{'x':None,'y':None,'z':None}]
-        bildebene = [empty(3),empty(3)]
-        
-        #helper
-        #schnittpunkte
-        #pa  = {'x':None,'y':None,'z':None}
-        #pb = {'x':None,'y':None,'z':None}
+        #intersection points of the two lines
         pa,pb = empty(3),empty(3) 
         
-        # Streckfaktor zur Evaluation  des 2. Punkts fuer die Geradengleichung
-        streckung= 5.0
+        #final scaling facors for the intersection points
         mua = 0.0
         mub = 0.0
         
-        # cam 0 (in Grundposition)
+        # estimation line equations in global coordinates
+        # cam 0 (in default position))
         vt1=transformation(phi[0],measurements[0])
         bildebene[0] = cameraPosition[0] + streckung * vt1
         
-        # cam 1 (seite)
+        # cam 1 (rot phi about y axis )
         vt2=transformation(phi[1],measurements[1])
         bildebene[1] = cameraPosition[1] + streckung * vt2
         
+        #Estimation of intersection of the two lines
         LineLineIntersect(cameraPosition[0],bildebene[0],cameraPosition[1], bildebene[1],pa,pb,mua, mub)
     
         position = pa+0.5*(pb-pa)
@@ -130,7 +128,6 @@ class wiimoteConnection(Thread):
 
     # wiimote callback (currently, we considere only the IR info)
     def wiimoteCallback(self, mesg_list, time):
-        #print 'time: %f' % time
 
         avgPos = {'x':0,'y':0}
         validSourcesCount = 0
@@ -153,7 +150,7 @@ class wiimoteConnection(Thread):
         return
             
     # UPDATE: the center of all detected IR points (POLL FROM WII)
-    # the fucking poll is buggy:
+    # the  poll is buggy:
     # http://abstrakraft.org/cwiid/discussion/topic/19?discussion_action=set-display;display=flat-desc
     def updateAverageIrPosition(self):
         avgPos = {'x':0,'y':0}
