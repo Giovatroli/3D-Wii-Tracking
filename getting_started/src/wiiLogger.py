@@ -7,6 +7,8 @@ import time
 import signal, os
 import math
 from threading import Thread
+from numpy import *
+import time
 
 # wiimote 3d tracking for two cameras
 # 
@@ -180,6 +182,28 @@ def LineLineIntersect(p1,p2,p3,p4,pa,pb,mua,mub):
 
     return True
 
+
+def transformation(phi,measurement):
+    #rechnet den Richtungsvektor der beiden geraden  in globalen koordinaten aus
+    #Umrechnungsfaktor pixel->mm in Bildebene L0 (aus Experiment)
+    f = 0.821659482758621
+    
+    # Stuetzvektor zum Nullpunkt der Bildebene L= relativ zur kamera (in mm)
+    v0 = array([-417.0,-312.0,1100.0])
+    
+    #Koordinatentrasformation R0 der wii Grundposition(senkrecht auf SB) auf die globalen (SB-) Koordinaten
+    R0 = matrix([[1.0,0.0,0.0],[0.0,-1.0,0.0],[0.0,0.0,-1.0]])
+    
+    #Koordinatentransformation von beliebiger Position (mit Winkelabweichung phi zur gGrundposition)auf  globale (SB-) Koordinaten
+    R1 = matrix([[math.cos(phi),0.0,math.sin(phi)],[0.0,1.0,0.0],[-math.sin(phi),0.0,math.cos(phi)]])*R0
+    #input1 = matrix([[int(measurement['x'])],[int(measurement['y'])],[0.0]])
+    input = array([int(measurement['x']),int(measurement['y']),0.0])
+    vtwii=(v0+f*input)
+    vt = vtwii*R1.transpose()
+    vt = array(vt)[0]
+    return vt 
+
+    
 def get3DPosition(measurements):
 
     if len(measurements) < 2:
@@ -189,32 +213,40 @@ def get3DPosition(measurements):
     point = {'x':0,'y':0,'z':0}
     position = {'x':0,'y':0,'z':0}
 
-    # 3D kamera position
-    cameraPosition = [{'x':250,'y':250,'z':1550},{'x':-770,'y':250,'z':360}]
-
-    # LO der bildebene relativ zur kamera
-    bildebenenLO= [{'x':-250,'y':-250,'z':-1520},{'x':1520,'y':-250,'z':-250}]
+    # 3D kamera position phia. angle between default and actual direction of the IR camera (rot around y axis)
+    cameraPosition = [{'x':715,'y':297,'z':4000},{'x':2800,'y':297,'z':0}]
+    winkelwii1=math.radians(0)
+    winkelwii2=math.radians(110)
+    phi=([winkelwii1,winkelwii2])
     
     # zwei weit entfernte (ca 10 m) punkte auf der geraden durch die messung und die camera:
     bildebene = [{'x':None,'y':None,'z':None},{'x':None,'y':None,'z':None}]
+    #bildebene = [empty(3),empty(3)]
+    
     #helper
     #schnittpunkte
     pa  = {'x':None,'y':None,'z':None}
     pb = {'x':None,'y':None,'z':None}
-    streckung = 2.0
+    # Streckfaktor zur Evaluation  des 2. Punkts fuer die Geradengleichung
+    streckung= 5.0
     mua = 0.0
     mub = 0.0
     
-    # cam 0 (hinten)
-    bildebene[0]['x'] = cameraPosition[0]['x'] + streckung * (bildebenenLO[0]['x'] + (measurements[0]['x']-295.0)/(735.0-295.0) * 500)
-    bildebene[0]['y'] = cameraPosition[0]['y'] + streckung * (bildebenenLO[0]['y'] + (1 - (measurements[0]['y'] - 133.0)/(585.0-133.0)) * 500)
-    bildebene[0]['z'] = cameraPosition[0]['z'] + streckung * bildebenenLO[0]['z']
+    
+    # cam 0 (in Grundposition)
+    vt1=transformation(phi[0],measurements[0])
+    #bildebene[0] = cameraPosition[0] + streckung * vt1
+    bildebene[0]['x'] = cameraPosition[0]['x'] + streckung * vt1[0]
+    bildebene[0]['y'] = cameraPosition[0]['y'] + streckung * vt1[1]
+    bildebene[0]['z'] = cameraPosition[0]['z'] + streckung * vt1[2]
     
     # cam 1 (seite)
-    bildebene[1]['z'] = cameraPosition[1]['z'] + streckung * (bildebenenLO[1]['z'] + (measurements[1]['x']-295.0)/(735.0-295.0) * 500)
-    bildebene[1]['y'] = cameraPosition[1]['y'] + streckung * (bildebenenLO[1]['y'] + (1 - (measurements[1]['y'] - 133.0)/(585.0-133.0)) * 500)
-    bildebene[1]['x']  = cameraPosition[1]['x'] + streckung * bildebenenLO[1]['x']
-
+    vt2=transformation(phi[1],measurements[1])
+    bildebene[1]['x'] = cameraPosition[1]['x'] + streckung * vt2[0]
+    bildebene[1]['y'] = cameraPosition[1]['y'] + streckung * vt2[1]
+    bildebene[1]['z'] = cameraPosition[1]['z'] + streckung * vt2[2]
+    
+  
     LineLineIntersect(cameraPosition[0],bildebene[0],cameraPosition[1], bildebene[1],pa,pb,mua, mub)
 
     position['x'] = pa['x']+0.5*(pb['x']-pa['x'])
@@ -239,13 +271,17 @@ def main():
 
     signal.signal(signal.SIGALRM, signalHandler)
 
+    # open logfile
+    logFile = open('logfile.txt', 'w')
+
     wiimoteCount = len(sys.argv)-1
     print 'Put', wiimoteCount, ' Wiimote(s) in discoverable mode now (press 1+2)...'
     for wiiIndex in range(0,wiimoteCount):
         current = wiimoteConnection(sys.argv[wiiIndex+1],wiiIndex)
         wiimotes.append(current)
         current.start()
-
+    
+    lastLogTime = time.time()
     while (LoggingIsActive):
         time.sleep(0.5)
         measurements = []
@@ -253,11 +289,24 @@ def main():
             measurements.append(wiiCon.averageIRPosition)
         #print measurements
         position = get3DPosition(measurements)
-        print position
-    
+        logTime = time.time()
+        
+        print logTime-lastLogTime,
+        logFile.write(str(logTime-lastLogTime))
+         
+        lastLogTime = logTime
+        for c in position.values():
+            print ",", c,
+            logFile.write("," + str(c))
+        print
+        logFile.write("\n")    
+        
     print "shutting down system"
     for wiiCon in wiimotes:
         wiiCon.killThread()
+        
+    logFile.close()
+
 
 if __name__ == "__main__":
     sys.exit(main())
